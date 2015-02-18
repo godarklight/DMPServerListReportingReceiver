@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.IO;
 
 namespace DMPServerReportingReceiver
 {
@@ -22,8 +23,8 @@ namespace DMPServerReportingReceiver
         private static TcpListener serverListener;
         //State tracking
         private static int connectedClients = 0;
-        private static List<ClientObject> clients = new List<ClientObject>();
-        private static Stopwatch programClock = new Stopwatch();
+        public static List<ClientObject> clients = new List<ClientObject>();
+        public static Stopwatch programClock = new Stopwatch();
         //Server disappears after 60 seconds
         private const int CONNECTION_TIMEOUT = 30000;
         //5MB max message size
@@ -34,11 +35,13 @@ namespace DMPServerReportingReceiver
 
         public static void Main()
         {
+            SetErrorCounter();
             programClock.Start();
             //Register handlers
             registeredHandlers.Add((int)MessageTypes.HEARTBEAT, MessageHandlers.HandleHeartbeat);
             registeredHandlers.Add((int)MessageTypes.REPORTING_VERSION_1, MessageHandlers.HandleReportingVersion1);
             registeredHandlers.Add((int)MessageTypes.REPORTING_VERSION_2, MessageHandlers.HandleReportingVersion2);
+            ReportTee.StartReportTee();
             StartServer();
             ExpireAllOnlineServers();
             while (true)
@@ -48,11 +51,26 @@ namespace DMPServerReportingReceiver
             }
         }
 
+        private static void SetErrorCounter()
+        {
+            string errorDirectory = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+            if (!Directory.Exists(errorDirectory))
+            {
+                Directory.CreateDirectory(errorDirectory);
+            }
+            while (File.Exists(Path.Combine(errorDirectory, MessageHandlers.reportID + ".txt")))
+            {
+                MessageHandlers.reportID++;
+            }
+            Console.WriteLine("Error pointer set to " + MessageHandlers.reportID);
+        }
+
         private static void ConnectClient(ClientObject newClient)
         {
             lock (clients)
             {
                 clients.Add(newClient);
+                ReportTee.QueueConnect(newClient);
                 connectedClients = clients.Count;
                 Console.WriteLine("New connection from " + newClient.address.ToString() + ", connected: " + connectedClients);
             }
@@ -84,6 +102,7 @@ namespace DMPServerReportingReceiver
                     {
                         //Don't care.
                     }
+                    ReportTee.QueueDisconnect(disconnectClient);
                 }
             }
         }
@@ -99,6 +118,18 @@ namespace DMPServerReportingReceiver
             offlineParams["@hash"] = hash;
             string mySql = "CALL gameserveroffline(@hash)";
             databaseConnection.ExecuteNonReader(mySql, offlineParams);
+        }
+
+        public static void DisconnectOtherClientsWithHash(ClientObject ourClient, string hash)
+        {
+            foreach (ClientObject client in clients.ToArray())
+            {
+                if (client.serverHash == hash && client != ourClient)
+                {
+                    Console.WriteLine("Disconnecting duplicate client: " + client.serverHash);
+                    DisconnectClient(client);
+                }
+            }
         }
 
         private static void CheckTimeouts()

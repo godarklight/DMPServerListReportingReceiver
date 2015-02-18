@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.IO;
 using MessageStream;
 using MessageStream2;
 
@@ -8,6 +10,8 @@ namespace DMPServerReportingReceiver
 {
     public class MessageHandlers
     {
+        public static int reportID;
+
         private static DatabaseConnection databaseConnection
         {
             get
@@ -58,13 +62,14 @@ namespace DMPServerReportingReceiver
                 if (!client.initialized)
                 {
                     client.initialized = true;
+                    MainClass.DisconnectOtherClientsWithHash(client, serverHash);
                     string sqlQuery = "CALL gameserverinit(@serverhash, @namex, @descriptionx, @gameportx, @gameaddressx, @protocolx, @programversion, @maxplayersx, @modcontrolx, @modcontrolshax, @gamemodex, @cheatsx, @warpmodex, @universex, @bannerx, @homepagex, @httpportx, @adminx, @teamx, @locationx, @fixedipx);";
                     Dictionary<string, object> parameters = new Dictionary<string, object>();
                     parameters["@serverhash"] = serverHash;
                     parameters["@namex"] = serverName;
                     if (serverName.Length > 255)
                     {
-                        serverName.Substring(0, 255);
+                        serverName = serverName.Substring(0, 255);
                     }
                     parameters["@descriptionx"] = description;
                     parameters["@gameportx"] = gamePort;
@@ -86,7 +91,29 @@ namespace DMPServerReportingReceiver
                     parameters["@locationx"] = location;
                     parameters["@fixedipx"] = fixedIP;
                     Console.WriteLine("Server " + serverHash + " is online!");
-                    databaseConnection.ExecuteNonReader(sqlQuery, parameters);
+                    try
+                    {
+                        databaseConnection.ExecuteNonReader(sqlQuery, parameters);
+                    }
+                    catch
+                    {
+                        int thisID = Interlocked.Increment(ref reportID);
+                        string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                        string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                        string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                        File.WriteAllBytes(errorBin, messageData);
+                        using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                        {
+                            errorFile.WriteLine("Reporting version 1");
+                            errorFile.WriteLine("State: Init");
+                            errorFile.WriteLine("SQL: " + sqlQuery);
+                            foreach (KeyValuePair<string,object> kvp in parameters)
+                            {
+                                errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                            }
+                        }
+                        throw;
+                    }
                 }
 
                 if (client.connectedPlayers == null)
@@ -99,7 +126,29 @@ namespace DMPServerReportingReceiver
                         playerParams["@hash"] = serverHash;
                         playerParams["@player"] = connectedPlayer;
                         string sqlQuery = "CALL gameserverplayer(@hash, @player, '1')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 1");
+                                errorFile.WriteLine("State: Init Players");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                 }
                 else
@@ -134,7 +183,29 @@ namespace DMPServerReportingReceiver
                         playerParams["hash"] = serverHash;
                         playerParams["player"] = player;
                         string sqlQuery = "CALL gameserverplayer(@hash ,@player, '1')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 1");
+                                errorFile.WriteLine("State: Add Player");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                     //Remove old players
                     foreach (string player in removeList)
@@ -144,7 +215,29 @@ namespace DMPServerReportingReceiver
                         playerParams["hash"] = serverHash;
                         playerParams["player"] = player;
                         string sqlQuery = "CALL gameserverplayer(@hash ,@player, '0')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 1");
+                                errorFile.WriteLine("State: Remove Player");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                 }
                 //Save connected players for tracking
@@ -160,6 +253,7 @@ namespace DMPServerReportingReceiver
         {
             Stopwatch sw = new Stopwatch();
             sw.Start();
+            ReportTee.QueueReport(client, messageData);
             using (MessageStream2.MessageReader mr = new MessageStream2.MessageReader(messageData))
             {
                 string serverHash = mr.Read<string>();
@@ -192,14 +286,16 @@ namespace DMPServerReportingReceiver
                 //Initialize if needed
                 if (!client.initialized)
                 {
+                    client.lastReport = messageData;
                     client.initialized = true;
+                    MainClass.DisconnectOtherClientsWithHash(client, serverHash);
                     string sqlQuery = "CALL gameserverinit(@serverhash, @namex, @descriptionx, @gameportx, @gameaddressx, @protocolx, @programversion, @maxplayersx, @modcontrolx, @modcontrolshax, @gamemodex, @cheatsx, @warpmodex, @universex, @bannerx, @homepagex, @httpportx, @adminx, @teamx, @locationx, @fixedipx);";
                     Dictionary<string, object> parameters = new Dictionary<string, object>();
                     parameters["@serverhash"] = serverHash;
                     parameters["@namex"] = serverName;
                     if (serverName.Length > 255)
                     {
-                        serverName.Substring(0, 255);
+                        serverName = serverName.Substring(0, 255);
                     }
                     parameters["@descriptionx"] = description;
                     parameters["@gameportx"] = gamePort;
@@ -221,7 +317,29 @@ namespace DMPServerReportingReceiver
                     parameters["@locationx"] = location;
                     parameters["@fixedipx"] = fixedIP;
                     Console.WriteLine("Server " + serverHash + " is online!");
-                    databaseConnection.ExecuteNonReader(sqlQuery, parameters);
+                    try
+                    {
+                        databaseConnection.ExecuteNonReader(sqlQuery, parameters);
+                    }
+                    catch
+                    {
+                        int thisID = Interlocked.Increment(ref reportID);
+                        string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                        string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                        string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                        File.WriteAllBytes(errorBin, messageData);
+                        using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                        {
+                            errorFile.WriteLine("Reporting version 2");
+                            errorFile.WriteLine("State: Init");
+                            errorFile.WriteLine("SQL: " + sqlQuery);
+                            foreach (KeyValuePair<string,object> kvp in parameters)
+                            {
+                                errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                            }
+                        }
+                        throw;
+                    }
                 }
 
                 if (client.connectedPlayers == null)
@@ -234,7 +352,29 @@ namespace DMPServerReportingReceiver
                         playerParams["@hash"] = serverHash;
                         playerParams["@player"] = connectedPlayer;
                         string sqlQuery = "CALL gameserverplayer(@hash, @player, '1')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 2");
+                                errorFile.WriteLine("State: Init Players");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                 }
                 else
@@ -269,7 +409,29 @@ namespace DMPServerReportingReceiver
                         playerParams["hash"] = serverHash;
                         playerParams["player"] = player;
                         string sqlQuery = "CALL gameserverplayer(@hash ,@player, '1')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 2");
+                                errorFile.WriteLine("State: Add Player");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                     //Remove old players
                     foreach (string player in removeList)
@@ -279,7 +441,29 @@ namespace DMPServerReportingReceiver
                         playerParams["hash"] = serverHash;
                         playerParams["player"] = player;
                         string sqlQuery = "CALL gameserverplayer(@hash ,@player, '0')";
-                        databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        try
+                        {
+                            databaseConnection.ExecuteNonReader(sqlQuery, playerParams);
+                        }
+                        catch
+                        {
+                            int thisID = Interlocked.Increment(ref reportID);
+                            string errorPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "errors");
+                            string errorParameters = Path.Combine(errorPath, thisID + ".txt");
+                            string errorBin = Path.Combine(errorPath, thisID + ".bin");
+                            File.WriteAllBytes(errorBin, messageData);
+                            using (StreamWriter errorFile = new StreamWriter(errorParameters))
+                            {
+                                errorFile.WriteLine("Reporting version 2");
+                                errorFile.WriteLine("State: Remove Player");
+                                errorFile.WriteLine("SQL: " + sqlQuery);
+                                foreach (KeyValuePair<string,object> kvp in playerParams)
+                                {
+                                    errorFile.WriteLine(kvp.Key + " : " + kvp.Value.ToString());
+                                }
+                            }
+                            throw;
+                        }
                     }
                 }
                 //Save connected players for tracking
