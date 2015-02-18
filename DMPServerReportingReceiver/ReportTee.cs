@@ -17,6 +17,11 @@ namespace DMPServerReportingReceiver
         private static TcpClient reportTCPClient;
         private static float lastSendTime = float.NegativeInfinity;
         private static float lastReceiveTime = float.NegativeInfinity;
+        //Receive side
+        private static byte[] receiveBytes;
+        private static int bytesToReceive;
+        private static bool receivingHeader;
+        private static int receivingType;
 
         public static void StartReportTee()
         {
@@ -54,6 +59,7 @@ namespace DMPServerReportingReceiver
                                     reportTCPClient.GetStream().Write(lastBytes, 0, lastBytes.Length);
                                 }
                             }
+                            Console.WriteLine("Sent all client reports");
                         }
                         else
                         {
@@ -118,6 +124,72 @@ namespace DMPServerReportingReceiver
             }
         }
 
+        private static void ReceiveCallback(IAsyncResult ar)
+        {
+            TcpClient receiveClient = (TcpClient)ar.AsyncState;
+            try
+            {  
+                if (receiveClient != reportTCPClient)
+                {
+                    receiveClient.Close();
+                    return;
+                }
+                int receivedBytes = receiveClient.GetStream().EndRead(ar);
+            
+                if (receivedBytes > 0)
+                {
+                    lastReceiveTime = MainClass.programClock.ElapsedMilliseconds;
+                    bytesToReceive -= receivedBytes;
+                    if (bytesToReceive == 0)
+                    {
+                        if (!receivingHeader)
+                        {
+                            byte[] typeBytes = new byte[4];
+                            byte[] lengthBytes = new byte[4];
+                            Array.Copy(receiveBytes, 0, typeBytes, 0, typeBytes.Length);
+                            Array.Copy(receiveBytes, typeBytes.Length, lengthBytes, 0, lengthBytes.Length);
+                            if (BitConverter.IsLittleEndian)
+                            {
+                                Array.Reverse(typeBytes);
+                                Array.Reverse(lengthBytes);
+                            }
+                            receivingType = BitConverter.ToInt32(typeBytes, 0);
+                            int receivingLength = BitConverter.ToInt32(lengthBytes, 0);
+                            if (receivingLength == 0)
+                            {
+                                bytesToReceive = 8;
+                                receiveBytes = new byte[8];
+                            }
+                            else
+                            {
+                                receivingHeader = true;
+                                bytesToReceive = receivingLength;
+                                receiveBytes = new byte[receivingLength];
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Reporting tee, type: " + receivingType + ", length: " + receiveBytes.Length);
+                            receivingHeader = false;
+                            bytesToReceive = 8;
+                            receiveBytes = new byte[8];
+                        }
+                    }
+                }
+                receiveClient.GetStream().BeginRead(receiveBytes, 0, bytesToReceive, ReceiveCallback, receiveClient);
+            }
+            catch
+            {
+                try
+                {
+                    receiveClient.Close();
+                }
+                catch
+                {
+                }
+            }
+        }
+
         private static void AttemptToConnect()
         {
             try
@@ -132,9 +204,13 @@ namespace DMPServerReportingReceiver
                     {
                         if (newConnection.Connected)
                         {
+                            newConnection.EndConnect(ar);
                             lastReceiveTime = MainClass.programClock.ElapsedMilliseconds;
                             lastSendTime = MainClass.programClock.ElapsedMilliseconds;
                             reportTCPClient = newConnection;
+                            receiveBytes = new byte[8];
+                            bytesToReceive = receiveBytes.Length;
+                            reportTCPClient.GetStream().BeginRead(receiveBytes, 0, bytesToReceive, ReceiveCallback, reportTCPClient);
                         }
                         else
                         {
@@ -176,6 +252,7 @@ namespace DMPServerReportingReceiver
             using (MessageWriter mw = new MessageWriter())
             {
                 mw.Write<int>(clientID);
+                mw.Write<int>((int)reportData.reportType);
                 if (reportData.reportType == ReportType.REPORT_V2)
                 {
                     mw.Write<byte[]>(reportData.clientReport);
