@@ -53,8 +53,8 @@ namespace DMPServerReportingReceiver
                                 {
                                     ReportData lastData = new ReportData();
                                     lastData.clientObject = client;
-                                    lastData.clientReport = client.lastReport;
-                                    lastData.reportType = ReportType.REPORT_V2;
+                                    lastData.serverReport = client.lastReport;
+                                    lastData.reportType = ReportType.REPORT;
                                     byte[] lastBytes = GetReportBytes(lastData);
                                     reportTCPClient.GetStream().Write(lastBytes, 0, lastBytes.Length);
                                 }
@@ -84,6 +84,7 @@ namespace DMPServerReportingReceiver
                         //30 sec heartbeat
                         if ((MainClass.programClock.ElapsedMilliseconds - lastSendTime) > 30000)
                         {
+                            Console.WriteLine("Sending heartbeat");
                             byte[] heartBeat = new byte[8];
                             reportTCPClient.GetStream().Write(heartBeat, 0, heartBeat.Length);
                         }
@@ -157,6 +158,10 @@ namespace DMPServerReportingReceiver
                             int receivingLength = BitConverter.ToInt32(lengthBytes, 0);
                             if (receivingLength == 0)
                             {
+                                if (receivingType == 0)
+                                {
+                                    Console.WriteLine("Received heartbeat");
+                                }
                                 bytesToReceive = 8;
                                 receiveBytes = new byte[8];
                             }
@@ -253,9 +258,9 @@ namespace DMPServerReportingReceiver
             {
                 mw.Write<int>(clientID);
                 mw.Write<int>((int)reportData.reportType);
-                if (reportData.reportType == ReportType.REPORT_V2)
+                if (reportData.reportType == ReportType.REPORT)
                 {
-                    mw.Write<byte[]>(reportData.clientReport);
+                    mw.Write<byte[]>(reportData.serverReport.GetBytes());
                 }
                 reportBytes = mw.GetMessageBytes();
             }
@@ -270,37 +275,46 @@ namespace DMPServerReportingReceiver
 
         public static void QueueConnect(ClientObject client)
         {
-            ReportData rd = new ReportData();
-            rd.reportType = ReportType.CONNECT;
-            rd.clientObject = client;
-            clientIDs.Add(client, Interlocked.Increment(ref newClientID));
-            lock (reportDataQueue)
+            if (reportTCPClient != null)
             {
-                reportDataQueue.Enqueue(rd);
+                ReportData rd = new ReportData();
+                rd.reportType = ReportType.CONNECT;
+                rd.clientObject = client;
+                clientIDs.Add(client, Interlocked.Increment(ref newClientID));
+                lock (reportDataQueue)
+                {
+                    reportDataQueue.Enqueue(rd);
+                }
             }
         }
 
-        public static void QueueReport(ClientObject client, byte[] data)
+        public static void QueueReport(ClientObject client, ServerReport data)
         {
-            ReportData rd = new ReportData();
-            rd.reportType = ReportType.REPORT_V2;
-            rd.clientObject = client;
-            rd.clientReport = data;
-            lock (reportDataQueue)
+            if (reportTCPClient != null)
             {
-                reportDataQueue.Enqueue(rd);
+                ReportData rd = new ReportData();
+                rd.reportType = ReportType.REPORT;
+                rd.clientObject = client;
+                rd.serverReport = data;
+                lock (reportDataQueue)
+                {
+                    reportDataQueue.Enqueue(rd);
+                }
             }
         }
 
         public static void QueueDisconnect(ClientObject client)
         {
-            ReportData rd = new ReportData();
-            rd.reportType = ReportType.DICONNECT;
-            rd.clientObject = client;
-            clientIDs.Remove(client);
-            lock (reportDataQueue)
+            if (reportTCPClient != null)
             {
-                reportDataQueue.Enqueue(rd);
+                ReportData rd = new ReportData();
+                rd.reportType = ReportType.DICONNECT;
+                rd.clientObject = client;
+                clientIDs.Remove(client);
+                lock (reportDataQueue)
+                {
+                    reportDataQueue.Enqueue(rd);
+                }
             }
         }
 
@@ -308,13 +322,13 @@ namespace DMPServerReportingReceiver
         {
             public ClientObject clientObject;
             public ReportType reportType;
-            public byte[] clientReport;
+            public ServerReport serverReport;
         }
 
         private enum ReportType
         {
             CONNECT,
-            REPORT_V2,
+            REPORT,
             DICONNECT,
         }
     }

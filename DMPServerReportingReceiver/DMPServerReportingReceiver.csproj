@@ -51,6 +51,7 @@
     <Compile Include="DatabaseConnection.cs" />
     <Compile Include="DatabaseSettings.cs" />
     <Compile Include="ReportTee.cs" />
+    <Compile Include="ServerReport.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>
