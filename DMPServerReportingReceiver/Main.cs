@@ -69,8 +69,8 @@ namespace DMPServerReportingReceiver
         {
             lock (clients)
             {
-                clients.Add(newClient);
                 ReportTee.QueueConnect(newClient);
+                clients.Add(newClient);
                 connectedClients = clients.Count;
                 Console.WriteLine("New connection from " + newClient.address.ToString() + ", connected: " + connectedClients);
             }
@@ -82,6 +82,7 @@ namespace DMPServerReportingReceiver
             {
                 if (clients.Contains(disconnectClient))
                 {
+                    ReportTee.QueueDisconnect(disconnectClient);
                     clients.Remove(disconnectClient);
                     if (disconnectClient.initialized)
                     {
@@ -102,7 +103,6 @@ namespace DMPServerReportingReceiver
                     {
                         //Don't care.
                     }
-                    ReportTee.QueueDisconnect(disconnectClient);
                 }
             }
         }

@@ -44,19 +44,29 @@ namespace DMPServerReportingReceiver
                             Console.WriteLine("Sending all client reports");
                             foreach (ClientObject client in MainClass.clients.ToArray())
                             {
+                                int clientID;
+                                if (!clientIDs.TryGetValue(client, out clientID))
+                                {
+                                    continue;
+                                }
                                 ReportData connectData = new ReportData();
-                                connectData.clientObject = client;
+                                connectData.clientID = clientID;
                                 connectData.reportType = ReportType.CONNECT;
+                                connectData.serverReport = new ServerReport();
+                                connectData.serverReport.gameAddress = client.address.Address.ToString();
                                 byte[] connectBytes = GetReportBytes(connectData);
                                 reportTCPClient.GetStream().Write(connectBytes, 0, connectBytes.Length);
                                 if (client.initialized && client.lastReport != null)
                                 {
                                     ReportData lastData = new ReportData();
-                                    lastData.clientObject = client;
+                                    lastData.clientID = clientID;
                                     lastData.serverReport = client.lastReport;
                                     lastData.reportType = ReportType.REPORT;
                                     byte[] lastBytes = GetReportBytes(lastData);
-                                    reportTCPClient.GetStream().Write(lastBytes, 0, lastBytes.Length);
+                                    if (lastBytes != null)
+                                    {
+                                        reportTCPClient.GetStream().Write(lastBytes, 0, lastBytes.Length);
+                                    }
                                 }
                             }
                             Console.WriteLine("Sent all client reports");
@@ -78,8 +88,11 @@ namespace DMPServerReportingReceiver
                                 rd = reportDataQueue.Dequeue();
                             }
                             byte[] reportBytes = GetReportBytes(rd);
-                            reportTCPClient.GetStream().Write(reportBytes, 0, reportBytes.Length);
-                            lastSendTime = MainClass.programClock.ElapsedMilliseconds;
+                            if (reportBytes != null)
+                            {
+                                reportTCPClient.GetStream().Write(reportBytes, 0, reportBytes.Length);
+                                lastSendTime = MainClass.programClock.ElapsedMilliseconds;
+                            }
                         }
                         //30 sec heartbeat
                         if ((MainClass.programClock.ElapsedMilliseconds - lastSendTime) > 30000)
@@ -87,6 +100,7 @@ namespace DMPServerReportingReceiver
                             Console.WriteLine("Sending heartbeat");
                             byte[] heartBeat = new byte[8];
                             reportTCPClient.GetStream().Write(heartBeat, 0, heartBeat.Length);
+                            lastSendTime = MainClass.programClock.ElapsedMilliseconds;
                         }
                         //60 sec timeout
                         if ((MainClass.programClock.ElapsedMilliseconds - lastReceiveTime) > 60000)
@@ -106,7 +120,7 @@ namespace DMPServerReportingReceiver
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("Report tee error: " + e.Message);
+                    Console.WriteLine("Report tee error: " + e);
                     if (reportTCPClient != null)
                     {
                         try
@@ -251,23 +265,26 @@ namespace DMPServerReportingReceiver
 
         private static byte[] GetReportBytes(ReportData reportData)
         {
-            int clientID = clientIDs[reportData.clientObject];
-            byte[] reportBytes;
+            byte[] payloadBytes;
             byte[] retBytes;
             using (MessageWriter mw = new MessageWriter())
             {
-                mw.Write<int>(clientID);
+                mw.Write<int>(reportData.clientID);
                 mw.Write<int>((int)reportData.reportType);
+                if (reportData.reportType == ReportType.CONNECT)
+                {
+                    mw.Write<string>(reportData.serverReport.gameAddress);
+                }
                 if (reportData.reportType == ReportType.REPORT)
                 {
                     mw.Write<byte[]>(reportData.serverReport.GetBytes());
                 }
-                reportBytes = mw.GetMessageBytes();
+                payloadBytes = mw.GetMessageBytes();
             }
             using (MessageWriter mw = new MessageWriter())
             {
                 mw.Write<int>(1);
-                mw.Write(reportBytes);
+                mw.Write(payloadBytes);
                 retBytes = mw.GetMessageBytes();
             }
             return retBytes;
@@ -275,52 +292,69 @@ namespace DMPServerReportingReceiver
 
         public static void QueueConnect(ClientObject client)
         {
-            if (reportTCPClient != null)
+            int clientID = Interlocked.Increment(ref newClientID);
+            clientIDs.Add(client, clientID);
+            if (reportTCPClient == null)
             {
-                ReportData rd = new ReportData();
-                rd.reportType = ReportType.CONNECT;
-                rd.clientObject = client;
-                clientIDs.Add(client, Interlocked.Increment(ref newClientID));
-                lock (reportDataQueue)
-                {
-                    reportDataQueue.Enqueue(rd);
-                }
+                return;
+            }
+            ReportData rd = new ReportData();
+            rd.reportType = ReportType.CONNECT;
+            rd.serverReport = new ServerReport();
+            rd.serverReport.gameAddress = client.address.Address.ToString();
+            rd.clientID = clientID;
+            lock (reportDataQueue)
+            {
+                reportDataQueue.Enqueue(rd);
             }
         }
 
         public static void QueueReport(ClientObject client, ServerReport data)
         {
-            if (reportTCPClient != null)
+            int clientID;
+            if (!clientIDs.TryGetValue(client, out clientID))
             {
-                ReportData rd = new ReportData();
-                rd.reportType = ReportType.REPORT;
-                rd.clientObject = client;
-                rd.serverReport = data;
-                lock (reportDataQueue)
-                {
-                    reportDataQueue.Enqueue(rd);
-                }
+                Console.WriteLine("Missing client address!");
+                return;
+            }
+            if (reportTCPClient == null)
+            {
+                return;
+            }
+            ReportData rd = new ReportData();
+            rd.reportType = ReportType.REPORT;
+            rd.clientID = clientID;
+            rd.serverReport = data;
+            lock (reportDataQueue)
+            {
+                reportDataQueue.Enqueue(rd);
             }
         }
 
         public static void QueueDisconnect(ClientObject client)
         {
-            if (reportTCPClient != null)
+            int clientID;
+            if (!clientIDs.TryGetValue(client, out clientID))
             {
-                ReportData rd = new ReportData();
-                rd.reportType = ReportType.DICONNECT;
-                rd.clientObject = client;
-                clientIDs.Remove(client);
-                lock (reportDataQueue)
-                {
-                    reportDataQueue.Enqueue(rd);
-                }
+                return;
+            }
+            clientIDs.Remove(client);
+            if (reportTCPClient == null)
+            {
+                return;
+            }
+            ReportData rd = new ReportData();
+            rd.reportType = ReportType.DICONNECT;
+            rd.clientID = clientID;
+            lock (reportDataQueue)
+            {
+                reportDataQueue.Enqueue(rd);
             }
         }
 
         private class ReportData
         {
-            public ClientObject clientObject;
+            public int clientID;
             public ReportType reportType;
             public ServerReport serverReport;
         }

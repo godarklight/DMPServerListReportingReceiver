@@ -32,18 +32,22 @@ namespace DMPServerReportingReceiver
             //If there is only 1 ':' mark, they have probably incorrectly put the port after the game address. Let's cut it off.
             if (inputAddress.Contains(":") && inputAddress.IndexOf(":") == inputAddress.LastIndexOf(":"))
             {
-                inputAddress = inputAddress.Substring(inputAddress.IndexOf(":"));
+                inputAddress = inputAddress.Substring(0, inputAddress.IndexOf(":"));
             }
             string outputAddress = inputAddress;
             IPAddress parseAddress;
             bool overrideAddress = false;
+            if (inputAddress == "")
+            {
+                overrideAddress = true;
+            }
             //Check that it's a valid IP address or DNS address.
             if (!IPAddress.TryParse(inputAddress, out parseAddress))
             {
                 try
                 {
                     IAsyncResult ar = Dns.BeginGetHostAddresses(inputAddress, null, null);
-                    if (ar.AsyncWaitHandle.WaitOne(5000))
+                    if (ar.AsyncWaitHandle.WaitOne(30000))
                     {
                         IPAddress[] addresses = Dns.EndGetHostAddresses(ar);
                         if (addresses.Length == 0)
@@ -134,6 +138,7 @@ namespace DMPServerReportingReceiver
         //Handle logic
         private static void HandleServerReport(ClientObject client, ServerReport serverReport)
         {
+            client.lastReport = serverReport;
             ReportTee.QueueReport(client, serverReport);
             Stopwatch sw = new Stopwatch();
             sw.Start();

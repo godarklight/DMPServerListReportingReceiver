@@ -86,6 +86,7 @@ namespace DMPServerReportingReceiver
                 mw.Write<string>(location);
                 mw.Write<bool>(fixedIP);
                 mw.Write<string[]>(players);
+                retVal = mw.GetMessageBytes();
             }
             return retVal;
         }
